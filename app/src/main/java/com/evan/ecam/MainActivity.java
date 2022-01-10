@@ -16,12 +16,14 @@ import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
+import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.Image;
 import android.media.ImageReader;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.Log;
+import android.util.Size;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
@@ -30,8 +32,12 @@ import android.widget.ArrayAdapter;
 import android.widget.Spinner;
 import android.widget.Toast;
 
+import java.lang.reflect.Array;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -49,9 +55,11 @@ public class MainActivity extends AppCompatActivity {
     private Handler mBackgroundHandler;
     private String[] mCameraIdList;
     private String mCurrentSelectedCamera;
-    private TextureView mTextureView; //need hardware acceleration
+    private AutoFitTextureView mTextureView; //need hardware acceleration
     private Surface mSurface;
     private SurfaceTexture mSurfaceTexture;
+    private List<Size> mOutputSizes;
+    private Size mPreviewSize;
 
     private Spinner mSpinner;
     private ArrayAdapter<String> mAdapter;
@@ -142,7 +150,7 @@ public class MainActivity extends AppCompatActivity {
             if(texture == null){
                 Log.d(TAG, "createCameraPreviewSession: texture is null");
             }
-
+            Log.d(TAG, "NOW USING SIZE:" + mPreviewSize.getWidth() +" * " + mPreviewSize.getHeight());
             Surface surface = new Surface(texture);
             Log.d(TAG, "onConfigured: surface done");
 
@@ -195,9 +203,16 @@ public class MainActivity extends AppCompatActivity {
     private void openCamera() {
         try {
             mCameraManager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
-            mCameraIdList = mCameraManager.getCameraIdList();//获取摄像头id列表
-            Log.e(TAG, "AVAILABLE CAMERA AMOUNT :" + mCameraIdList.length);
+            mCameraIdList = mCameraManager.getCameraIdList();//获取可用摄像头列表
+            if (0 == mCameraIdList.length) {
+                Log.e(TAG, "NO FUCKING CAMERA DETECTED");
+                return;
+            } else {
+                Log.d(TAG, "AVAILABLE CAMERA AMOUNT :" + mCameraIdList.length);
+            }
 
+            //下拉菜单选择camera
+            //todo 不知道为什么，只有两个摄像头可用
             mAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, mCameraIdList);
             mSpinner.setAdapter(mAdapter);
             mSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
@@ -224,15 +239,20 @@ public class MainActivity extends AppCompatActivity {
             mBackgroundThread.start();
             mBackgroundHandler = new Handler(mBackgroundThread.getLooper());
 
-            if (0 == mCameraIdList.length) {
-                Log.e(TAG, "NO FUCKING CAMERA DETECTED");
-                return;
-            }
+
             for (String cameraId : mCameraIdList) {
                 Log.e(TAG, "selectCamera: cameraId=" + cameraId);
                 //获取相机特征,包含前后摄像头信息，分辨率等
                 CameraCharacteristics cameraCharacteristics = mCameraManager.getCameraCharacteristics(cameraId);
                 Integer facing = cameraCharacteristics.get(CameraCharacteristics.LENS_FACING);//获取这个摄像头的面向
+                StreamConfigurationMap configs = cameraCharacteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+                mOutputSizes = Arrays.asList(configs.getOutputSizes(SurfaceTexture.class));
+                for (Size sz : mOutputSizes) {
+                    Log.e(TAG, "mOutputSizes: available size :" + sz);
+                }
+                mPreviewSize = mOutputSizes.get(0);
+                mTextureView.setAspectRation(mPreviewSize.getWidth(), mPreviewSize.getHeight());
+
                 //CameraCharacteristics.LENS_FACING_BACK 后摄像头
                 //CameraCharacteristics.LENS_FACING_FRONT 前摄像头
                 //CameraCharacteristics.LENS_FACING_EXTERNAL 外部摄像头,比如OTG插入的摄像头
@@ -283,4 +303,6 @@ public class MainActivity extends AppCompatActivity {
             mImageReader = null;
         }
     }
+
+
 }
